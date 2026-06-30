@@ -1,64 +1,177 @@
-# CORDIC
-1 Introduction
-The CORDIC (COordinate Rotation DIgital Computer) algorithm is an iterative technique
-used to compute trigonometric, hyperbolic, and other transcendental functions using only shift
-and-add operations, making it highly suitable for hardware implementation where multipliers
-are expensive or unavailable. This project implements a fully pipelined, 16-stage CORDIC
-processor in Verilog HDL, operating in two modes:
-Rotation Mode: Given an input angle, computes its sine and cosine values.
-Vectoring Mode: Given a vector (x,y), computes its magnitude and phase angle.
-2 CORDIC Algorithm: Theoretical Background
-2.1 Basic Principle
-The CORDIC algorithm rotates a vector (xi,yi) by a sequence of progressively smaller angles
-θi = tan−1(2−i), such that each rotation can be implemented using only a binary shift and an
-addition/subtraction. The iterative equations are:
-xi+1 = xi −di ·yi ·2−i
-yi+1 = yi +di ·xi ·2−i
-zi+1 = zi −di ·θi
-(1)
-(2)
-(3)
-where di = ±1 is the direction of rotation at iteration i, and θi = tan−1(2−i) is pre-computed
-and stored in a lookup table (LUT).
-2.2 Rotation Mode
-In rotation mode, the goal is to rotate the input vector until the residual angle zi converges to
-zero. The decision variable is chosen as:
-di = −1 if zi <0
-+1 otherwise
-(4)
-After n iterations, with initial vector (x0,y0) = (1/K,0) and z0 = θ (target angle), the outputs
-converge to:
-xn ≈cos(θ),
-yn ≈ sin(θ)
-(5)
-where K ≈ 1.6468 is the CORDIC gain that must be pre-compensated in the initial value of
-x0.
-1
-2.3 Vectoring Mode
-In vectoring mode, the goal is to rotate the input vector (x0,y0) until yi converges to zero, while
-accumulating the total angle traversed in zi. The decision variable is:
-di = +1 if yi <0
-−1 otherwise
-After n iterations, the outputs converge to:
-xn ≈K
-x2
-0 + y2
-0,
-zn ≈ tan−1 y0
-giving the magnitude (scaled by gain K) and phase of the input vector.
-2.4 Fixed-Point Representation
-(6)
-x0
-(7)
-All quantities are represented in a Q2.14 fixed-point format using a 16-bit signed word: 2 integer
-bits and 14 fractional bits, giving a resolution of 2−14 ≈ 6.1×10−5. Angles are scaled such that
-90◦ corresponds to 16384 (i.e. a scale factor of 16384/90), which keeps the angle accumulator
-within the same word width as the data path.
-2.5 Pipelining
-Since each CORDIC iteration depends only on the result of the previous iteration, the algorithm
-is naturally suited to a fully pipelined hardware architecture. Each of the 16 micro-rotation
-stages is implemented as one pipeline stage, with dedicated x, y, z, and valid registers propa
-gating through the pipeline on every clock edge. This allows a new input sample to be accepted
-every clock cycle, yielding a throughput of one result per clock cycle after an initial latency of
-16 cycles, at the cost of increased register/area usage compared to an iterative (non-pipelined)
-implementation
+# CORDIC Processor (16-Stage Pipelined Verilog Implementation)
+
+## Introduction
+
+The **CORDIC (COordinate Rotation DIgital Computer)** algorithm is an iterative technique used to compute trigonometric, hyperbolic, and other transcendental functions using only **shift-and-add operations**, making it highly suitable for hardware implementation where multipliers are expensive or unavailable.
+
+This project implements a **fully pipelined 16-stage CORDIC processor** in **Verilog HDL**, supporting two operating modes:
+
+- **Rotation Mode:** Computes the sine and cosine of a given input angle.
+- **Vectoring Mode:** Computes the magnitude and phase angle of an input vector.
+
+---
+
+# CORDIC Algorithm
+
+## Basic Principle
+
+The CORDIC algorithm rotates a vector \((x_i, y_i)\) by a sequence of progressively smaller angles
+
+\[
+\theta_i = \tan^{-1}(2^{-i})
+\]
+
+Each iteration requires only shift and add/subtract operations.
+
+The iterative equations are
+
+```
+x(i+1) = x(i) - d(i) × y(i) × 2^(-i)
+
+y(i+1) = y(i) + d(i) × x(i) × 2^(-i)
+
+z(i+1) = z(i) - d(i) × atan(2^(-i))
+```
+
+where
+
+- **d(i) = ±1** is the rotation direction
+- **atan(2⁻ⁱ)** values are stored in a Lookup Table (LUT)
+
+---
+
+# Rotation Mode
+
+In Rotation Mode, the objective is to rotate the input vector until the residual angle becomes zero.
+
+Decision variable:
+
+```
+d(i) = -1   if z(i) < 0
+d(i) = +1   otherwise
+```
+
+Initial values:
+
+```
+x0 = 1/K
+y0 = 0
+z0 = Input Angle
+```
+
+After 16 iterations,
+
+```
+x ≈ cos(θ)
+
+y ≈ sin(θ)
+```
+
+where
+
+```
+K ≈ 1.6468
+```
+
+is the CORDIC gain, compensated by initializing
+
+```
+x0 = 1/K ≈ 0.60725
+```
+
+---
+
+# Vectoring Mode
+
+In Vectoring Mode, the objective is to rotate the vector until the y-component becomes zero.
+
+Decision variable:
+
+```
+d(i) = +1   if y(i) < 0
+d(i) = -1   otherwise
+```
+
+After convergence,
+
+```
+Magnitude ≈ K × √(x² + y²)
+
+Phase ≈ atan(y/x)
+```
+
+The magnitude is scaled by the CORDIC gain.
+
+---
+
+# Fixed-Point Representation
+
+All computations are performed using **Q2.14 fixed-point format**.
+
+- **Word Length:** 16 bits
+- **Integer Bits:** 2
+- **Fractional Bits:** 14
+- **Resolution:** 2⁻¹⁴ ≈ 6.1 × 10⁻⁵
+
+Angles are represented using the scaling
+
+```
+90° = 16384
+```
+
+which corresponds to
+
+```
+Scale Factor = 16384 / 90
+```
+
+This keeps the angle accumulator within the same 16-bit datapath.
+
+---
+
+# Pipeline Architecture
+
+The processor is implemented as a **fully pipelined 16-stage architecture**.
+
+Each stage performs one CORDIC micro-rotation and contains dedicated pipeline registers for
+
+- X
+- Y
+- Z
+- Valid signal
+
+A new input sample can be accepted **every clock cycle**.
+
+### Performance
+
+- Pipeline Stages : **16**
+- Latency : **16 clock cycles**
+- Throughput : **1 output per clock cycle** (after pipeline fill)
+
+The pipelined implementation provides significantly higher throughput than an iterative CORDIC architecture at the expense of additional registers and hardware area.
+
+---
+
+# Features
+
+- 16-stage fully pipelined architecture
+- Rotation Mode (Sine/Cosine computation)
+- Vectoring Mode (Magnitude/Phase computation)
+- Shift-and-add implementation (No multipliers)
+- Q2.14 fixed-point arithmetic
+- Angle Lookup Table (LUT)
+- Valid-bit propagation through pipeline
+- Synthesizable Verilog HDL design
+
+---
+
+# Applications
+
+- Digital Signal Processing (DSP)
+- Software Defined Radio (SDR)
+- FFT implementations
+- Motor Control
+- Robotics
+- Navigation Systems
+- FPGA and ASIC designs
+- Embedded Digital Systems
